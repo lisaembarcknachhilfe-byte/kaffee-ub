@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BIP, HDI und HPI</title>
+<style>
+:root{
+  --bg:#f4efe8;
+  --ink:#2d2925;
+  --muted:#706760;
+  --line:#ddd4c9;
+  --accent:#6f3f24;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  color:var(--ink);
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:linear-gradient(155deg,#f7f2eb,#ece2d6);
+}
+main{max-width:1100px;margin:0 auto;padding:25px 16px 70px}
+h1{font-size:clamp(32px,6vw,58px);line-height:1.02;margin:8px 0 12px}
+.lead{font-size:18px;line-height:1.45;color:var(--muted);max-width:850px;margin-bottom:24px}
+.layout{display:grid;grid-template-columns:minmax(260px,.9fr) minmax(0,1.6fr);gap:18px;align-items:start}
+.bank,.zone{
+  background:rgba(255,255,255,.88);
+  border-radius:22px;
+  padding:16px;
+  box-shadow:0 14px 34px rgba(56,38,26,.08);
+}
+.bank{position:sticky;top:12px}
+.bank h2,.zone h2{margin:0 0 10px}
+#cards,.placed{display:grid;gap:9px}
+.statement{
+  border:1.5px solid var(--line);
+  background:white;
+  border-radius:15px;
+  padding:13px 14px;
+  line-height:1.3;
+  font-size:16px;
+  cursor:grab;
+  user-select:none;
+  touch-action:manipulation;
+  box-shadow:0 4px 12px rgba(56,37,26,.05);
+  transition:.15s ease;
+}
+.statement.selected{
+  outline:3px solid rgba(111,63,36,.24);
+  border-color:var(--accent);
+  transform:scale(1.012);
+}
+.statement.wrong{animation:shake .32s}
+.zones{display:grid;gap:14px}
+.zone{
+  min-height:170px;
+  border:2px dashed #d2c5b6;
+}
+.zone.dragover{border-color:var(--accent);background:#fffaf5}
+.zone p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{
+  border:0;
+  border-radius:14px;
+  padding:13px 18px;
+  font-size:16px;
+  font-weight:750;
+  cursor:pointer;
+}
+#check{background:var(--accent);color:#fff}
+#reset{background:#e8dfd4;color:var(--ink)}
+#feedback{
+  display:none;
+  margin-top:14px;
+  border-radius:15px;
+  padding:14px 16px;
+  font-size:17px;
+  line-height:1.35;
+}
+#feedback.ok{display:block;background:#e6f4eb;color:#225f3b}
+#feedback.bad{display:block;background:#f9e6e3;color:#8d372f}
+.note{font-size:14px;color:var(--muted);margin-top:10px}
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-5px)}
+  75%{transform:translateX(5px)}
+}
+@media(max-width:760px){
+  .layout{grid-template-columns:1fr}
+  .bank{position:static}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>BIP, HDI oder HPI?</h1>
+  <div class="lead">Sortiere die Aussagen zu BIP, HDI und HPI. Ziehe eine Aussage in die passende Kategorie. Auf dem iPad kannst du alternativ zuerst eine Aussage und danach die Kategorie antippen.</div>
+
+  <div class="layout">
+    <section class="bank">
+      <h2>Aussagen</h2>
+      <div id="cards"></div>
+      <div class="note">Tipp: Antippen funktioniert zusätzlich zum Ziehen.</div>
+    </section>
+
+    <section class="zones">
+      <div class="zone" data-category="BIP">
+        <h2>BIP</h2>
+        <p>Bruttoinlandsprodukt</p>
+        <div class="placed"></div>
+      </div>
+      <div class="zone" data-category="HDI">
+        <h2>HDI</h2>
+        <p>Human Development Index</p>
+        <div class="placed"></div>
+      </div>
+      <div class="zone" data-category="HPI">
+        <h2>HPI</h2>
+        <p>Happy Planet Index</p>
+        <div class="placed"></div>
+      </div>
+
+      <div class="actions">
+        <button id="check">Lösung prüfen</button>
+        <button id="reset" type="button">Neu mischen</button>
+      </div>
+      <div id="feedback"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const API_BASE = "https://ndosnzmwcqvuwkijskmr.supabase.co/functions/v1/coffee-live";
+
+const ITEMS = [
+  {id:"bip1", text:"Verwendungsrechnung", category:"BIP"},
+  {id:"bip2", text:"Wirtschaftliche Gesamtleistung eines Landes", category:"BIP"},
+  {id:"bip3", text:"Produktion von Waren und Dienstleistungen im Inland", category:"BIP"},
+  {id:"hdi1", text:"Lebenserwartung bei der Geburt", category:"HDI"},
+  {id:"hdi2", text:"Erwartete Dauer des Schulbesuchs", category:"HDI"},
+  {id:"hdi3", text:"Bruttonationaleinkommen (BNE) pro Kopf", category:"HDI"},
+  {id:"hpi1", text:"Subjektives Wohlbefinden / Lebenszufriedenheit", category:"HPI"},
+  {id:"hpi2", text:"Lebenserwartung", category:"HPI"},
+  {id:"hpi3", text:"Ökologischer Fußabdruck", category:"HPI"}
+];
+
+let selected = null;
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random() * (i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function deviceId(){
+  let id = localStorage.getItem("coffee_device_id");
+  if(!id){
+    id = crypto.randomUUID ? crypto.randomUUID() : "d" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    localStorage.setItem("coffee_device_id", id);
+  }
+  return id;
+}
+
+function makeCard(item){
+  const el = document.createElement("div");
+  el.className = "statement";
+  el.draggable = true;
+  el.dataset.id = item.id;
+  el.textContent = item.text;
+
+  el.addEventListener("dragstart", e => {
+    e.dataTransfer.setData("text/plain", item.id);
+    selected = item.id;
+    markSelected();
+  });
+
+  el.addEventListener("click", () => {
+    selected = selected === item.id ? null : item.id;
+    markSelected();
+  });
+
+  return el;
+}
+
+function markSelected(){
+  document.querySelectorAll(".statement").forEach(el => {
+    el.classList.toggle("selected", el.dataset.id === selected);
+  });
+}
+
+function render(){
+  selected = null;
+  document.querySelectorAll(".placed").forEach(p => p.innerHTML = "");
+  const cards = document.getElementById("cards");
+  cards.innerHTML = "";
+  shuffle(ITEMS).forEach(item => cards.appendChild(makeCard(item)));
+  const f = document.getElementById("feedback");
+  f.className = "";
+  f.style.display = "none";
+}
+
+function moveTo(id, category){
+  const el = document.querySelector('.statement[data-id="' + id + '"]');
+  const zone = document.querySelector('.zone[data-category="' + category + '"] .placed');
+  if(el && zone) zone.appendChild(el);
+  selected = null;
+  markSelected();
+}
+
+document.querySelectorAll(".zone").forEach(zone => {
+  zone.addEventListener("dragover", e => {
+    e.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    moveTo(e.dataTransfer.getData("text/plain"), zone.dataset.category);
+  });
+  zone.addEventListener("click", e => {
+    if(selected && !e.target.classList.contains("statement")){
+      moveTo(selected, zone.dataset.category);
+    }
+  });
+});
+
+document.getElementById("reset").addEventListener("click", render);
+
+document.getElementById("check").addEventListener("click", async () => {
+  const feedback = document.getElementById("feedback");
+  const placed = [...document.querySelectorAll(".zone .statement")];
+
+  if(placed.length !== ITEMS.length){
+    feedback.textContent = "Ordne zuerst alle Aussagen einer Kategorie zu.";
+    feedback.className = "bad";
+    return;
+  }
+
+  let allCorrect = true;
+  document.querySelectorAll(".statement").forEach(el => el.classList.remove("wrong"));
+
+  for(const item of ITEMS){
+    const el = document.querySelector('.statement[data-id="' + item.id + '"]');
+    const zone = el.closest(".zone");
+    if(!zone || zone.dataset.category !== item.category){
+      allCorrect = false;
+      el.classList.add("wrong");
+    }
+  }
+
+  if(!allCorrect){
+    feedback.textContent = "Noch nicht ganz richtig. Prüfe deine Zuordnungen und versuche es erneut.";
+    feedback.className = "bad";
+    return;
+  }
+
+  feedback.textContent = "Alles richtig. Deine Lösung wurde gezählt.";
+  feedback.className = "ok";
+
+  try{
+    const r = await fetch(API_BASE + "?api=complete", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({device_id:deviceId()})
+    });
+    if(!r.ok) throw new Error("Übertragung fehlgeschlagen");
+  }catch(e){
+    feedback.textContent = "Alles richtig. Die Live Übertragung konnte gerade nicht bestätigt werden.";
+    feedback.className = "bad";
+  }
+});
+
+render();
+</script>
+</body>
+</html>
