@@ -199,7 +199,6 @@ function render(){
   shuffle(ITEMS).forEach(item => cards.appendChild(makeCard(item)));
   const f = document.getElementById("feedback");
   f.className = "";
-  f.style.display = "none";
 }
 
 function moveTo(id, category){
@@ -232,11 +231,14 @@ document.getElementById("reset").addEventListener("click", render);
 
 document.getElementById("check").addEventListener("click", async () => {
   const feedback = document.getElementById("feedback");
+  feedback.className = "";
+  feedback.style.display = "block";
   const placed = [...document.querySelectorAll(".zone .statement")];
 
   if(placed.length !== ITEMS.length){
     feedback.textContent = "Ordne zuerst alle Aussagen einer Kategorie zu.";
     feedback.className = "bad";
+    feedback.style.display = "block";
     return;
   }
 
@@ -258,8 +260,9 @@ document.getElementById("check").addEventListener("click", async () => {
     return;
   }
 
-  feedback.textContent = "Alles richtig. Deine Lösung wurde gezählt.";
+  feedback.textContent = "Alles richtig. Deine Lösung wird übertragen …";
   feedback.className = "ok";
+  feedback.style.display = "block";
 
   try{
     const r = await fetch(API_BASE + "?api=complete", {
@@ -268,9 +271,11 @@ document.getElementById("check").addEventListener("click", async () => {
       body:JSON.stringify({device_id:deviceId()})
     });
     if(!r.ok) throw new Error("Übertragung fehlgeschlagen");
+    feedback.textContent = "Alles richtig. Deine Lösung wurde gezählt.";
   }catch(e){
     feedback.textContent = "Alles richtig. Die Live Übertragung konnte gerade nicht bestätigt werden.";
     feedback.className = "bad";
+    feedback.style.display = "block";
   }
 });
 
